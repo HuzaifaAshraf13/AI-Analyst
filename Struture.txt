@@ -1,0 +1,15 @@
+AI-Analyst/
+├── entry.py                # Entry point to start the FastAPI server
+├── main.py                 # Core app & routes initialization
+├── config.py               # Configuration settings (e.g., .env variables)
+├── agents/                 # Folder for agent modules
+│   ├── __init__.py         # Initialize the agents package
+│   ├── routes.py           # contain the logic
+│   ├── analyzer.py         # Agent 1 (Data Profiler)
+│   ├── operator.py         # Agent 2 (Pandas operations)
+│   ├── scientist.py        # Agent 3 (Analysis / Algorithm)
+│   └── reporter.py         # Agent 4 (Reports with charts)
+├── utils/                  # Folder for utility functions or helpers
+│   └── gemini_client.py    # Gemini API wrapper (if required)
+├── requirements.txt        # Required Python packages
+└── .env                    # Environment variables (if any)
