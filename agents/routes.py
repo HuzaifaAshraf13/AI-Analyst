@@ -1,3 +1,4 @@
+# agents/router.py
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from agents.analyzer import analyze
@@ -35,10 +36,10 @@ async def process_file(file: UploadFile = File(...)):
 
 @router.get("/download-report/{filename}")
 async def download_report(filename: str):
-    """Endpoint to download generated reports"""
+    """Endpoint to download generated PDF reports"""
     try:
-        # Secure path construction
-        reports_dir = Path("reports")
+        # Secure path construction for PDF reports
+        reports_dir = Path("pdf_reports")  # Changed from 'reports'
         file_path = reports_dir / filename
         
         # Security checks
@@ -46,17 +47,19 @@ async def download_report(filename: str):
             raise HTTPException(status_code=404, detail="Report not found")
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail="Invalid file path")
-            
+        
+        # Proper media type for PDF
         return FileResponse(
             path=file_path,
             filename=filename,
-            media_type="application/octet-stream"
+            media_type="application/pdf"  # Changed from octet-stream
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 async def file_to_dataframe(file: UploadFile) -> pd.DataFrame:
     """Convert uploaded file to pandas DataFrame"""
+    tmp_path = None
     try:
         # Get file extension
         file_ext = os.path.splitext(file.filename)[1].lower()
@@ -75,10 +78,10 @@ async def file_to_dataframe(file: UploadFile) -> pd.DataFrame:
         elif file_ext == '.json':
             df = pd.read_json(tmp_path)
         else:
-            raise ValueError("Unsupported file format")
+            raise ValueError(f"Unsupported file format: {file_ext}")
             
         return df
     finally:
         # Clean up temp file
-        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+        if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

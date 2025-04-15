@@ -2,7 +2,7 @@
 import requests
 from config import GEMINI_API_KEY
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 def generate_insight(prompt: str):
     headers = {
