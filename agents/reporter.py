@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import os
 from fpdf import FPDF
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Union
 
-REPORTS_DIR = "pdf_reports"  # Changed directory name
+REPORTS_DIR = "pdf_reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 class PDFReport(FPDF):
@@ -25,33 +25,39 @@ class PDFReport(FPDF):
         self.multi_cell(0, 8, body)
         self.ln()
 
-async def report(df: pd.DataFrame, insights: Dict) -> str:
+async def report(df: pd.DataFrame, insights: Dict[str, Union[str, list]]) -> str:
     """Generate PDF report with visualizations and AI insights"""
-    # Create PDF
     pdf = PDFReport()
     pdf.add_page()
     
-    # Add metadata
+    # Metadata
     pdf.chapter_title(f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # Add basic info
+    # Dataset summary
     pdf.chapter_title("Dataset Summary")
     pdf.chapter_body(f"Shape: {df.shape}\nColumns: {', '.join(df.columns)}")
     
-    # Add visualizations
-    plt.figure(figsize=(8, 6))
-    df.hist()
-    plot_path = os.path.join(REPORTS_DIR, "distributions.png")
-    plt.savefig(plot_path)
-    plt.close()
+    # Distributions
+    try:
+        plt.figure(figsize=(10, 8))
+        df.hist(bins=30, edgecolor='black', grid=False)
+        plt.tight_layout()
+        plot_path = os.path.join(REPORTS_DIR, "distributions.png")
+        plt.savefig(plot_path)
+        plt.close()
+        
+        pdf.chapter_title("Data Distributions")
+        pdf.image(plot_path, x=10, w=190)
+        os.remove(plot_path)
+    except Exception as e:
+        pdf.chapter_body(f"Could not generate distribution plot: {e}")
     
-    pdf.chapter_title("Data Distributions")
-    pdf.image(plot_path, x=10, w=190)
-    os.remove(plot_path)  # Clean up temp image
-    
-    # Add AI insights
+    # AI Insights
     pdf.chapter_title("AI Analysis Insights")
-    pdf.chapter_body(insights.get('ai_insights', 'No insights generated'))
+    ai_text = insights.get('ai_insights', 'No insights generated')
+    if isinstance(ai_text, list):
+        ai_text = '\n'.join(ai_text)
+    pdf.chapter_body(ai_text)
     
     # Save PDF
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
