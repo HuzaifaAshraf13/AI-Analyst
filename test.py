@@ -6,7 +6,7 @@ from agents.scientist import science  # Importing scientist.py
 
 async def test_analyzer_operator_scientist_pipeline():
     # Load sample CSV
-    df = pd.read_csv("/home/eric/Desktop/sample_data.csv")
+    df = pd.read_csv("/home/eric/Desktop/Electric_Vehicle_Population_Data.csv")
 
     print("=== Step 1: Running Analyzer ===")
     analysis_results = await analyze(df)

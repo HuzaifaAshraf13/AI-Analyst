@@ -7,7 +7,7 @@ from agents.reporter import report
 
 async def test_full_pipeline():
     # Load sample CSV
-    df = pd.read_csv("/home/eric/Desktop/sample_data.csv")
+    df = pd.read_csv("/home/eric/Desktop/Electric_Vehicle_Population_Data.csv")
 
     print("=== Step 1: Running Analyzer ===")
     analysis_results = await analyze(df)
