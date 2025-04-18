@@ -27,17 +27,17 @@ async def process_file(file: UploadFile = File(...)):
 
         # Step 2: Operator
         updates.append("Operator: Starting data preprocessing...")
-        operations = await operate(df)
+        operations = await operate(df, profile)  # Pass profile to operator
         updates.append("Operator: Data preprocessing complete")
 
         # Step 3: Scientist
         updates.append("Scientist: Building and training model...")
-        insights = await science(df)
+        insights = await science(df, profile)  # Pass profile to scientist
         updates.append("Scientist: Model trained and evaluated")
 
         # Step 4: Reporter
         updates.append("Reporter: Generating PDF report...")
-        report_path = await report(df, insights)
+        report_path = await report(df, profile, operations, insights)  # Pass all required arguments
         updates.append("Reporter: PDF report generated")
 
         return {

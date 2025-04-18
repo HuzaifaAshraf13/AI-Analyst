@@ -1,57 +1,70 @@
 import pandas as pd
 import asyncio
-from typing import Dict
+from agents.analyzer import analyze
+from agents.operator import operate
 from agents.scientist import science
+from agents.reporter import report  
 
-# Mock generate_insight to simulate Gemini API behavior
-async def mock_generate_insight(prompt: str) -> str:
-    # Simulate a mock response from Gemini API
-    if "task" in prompt:
-        return '''
-{
-    "task": "classification",
-    "target_column": "target",
-    "feature_columns": ["feature1", "feature2"],
-    "rationale": "Based on the data characteristics."
-}'''
-    return '''```python
-# [MODEL TRAINING]
-# some random code
-```'''
+async def test_full_pipeline():
+    # Load sample CSV
+    df = pd.read_csv("/home/eric/Desktop/sample_data.csv")
 
-# Set up a basic test DataFrame
-data = {
-    'feature1': [1, 2, 3],
-    'feature2': [4, 5, 6],
-    'target': [0, 1, 0]
-}
-df = pd.DataFrame(data)
-
-# Replace generate_insight in your original code with mock for testing
-generate_insight = mock_generate_insight
-
-# Run the test
-async def test_science():
-    analysis_results: Dict = {
-        'ai_analysis': {
-            'context': "Test data for classification task"
-        }
-    }
-
-    result = await science(df, analysis_results)
+    print("=== Step 1: Running Analyzer ===")
+    analysis_results = await analyze(df)
     
-    # Check if the result contains expected keys
-    assert "model_type" in result
-    assert "task" in result
-    assert "metrics" in result
-    assert "insights" in result
-    assert "training_code" in result
+    if not analysis_results:
+        print("Error: Analyzer returned no valid results.")
+        return
+    
+    print("Analysis Keys:", analysis_results.keys())
+    print("Preprocessing Ready:", analysis_results.get("preprocessing_ready"))
 
-    # Additional checks
-    assert result["task"] == "classification"
-    assert result["model_type"] in ["RandomForestClassifier", "RandomForestRegressor"]  # Based on your fallback
+    print("\n=== Step 2: Running Operator ===")
+    operator_output = await operate(df, analysis_results=analysis_results)
 
-    print("Test passed!")
+    print("\nExecuted Operations:")
+    for op in operator_output.get("executed_operations", []):
+        print("-", op)
+
+    print("\nSuggested Operations:")
+    for sug in operator_output.get("suggested_operations", []):
+        print("-", sug.get("purpose"))
+
+    print("\nData Snapshot After Operations:")
+    print(operator_output.get("data_snapshot"))
+
+    processed_df = operator_output.get("processed_df", df)
+    if processed_df is None:
+        print("Error: No processed data available from operator.")
+        return
+
+    print("\n=== Step 3: Running Scientist ===")
+    scientist_results = await science(processed_df, analysis_results)
+    
+    if not scientist_results:
+        print("Error: Scientist returned no valid results.")
+        return
+
+    print("\nScientist Results:")
+    print(scientist_results)
+
+    print(f"Model Type: {scientist_results.get('model_type')}")
+    print(f"Task: {scientist_results.get('task')}")
+    print("\nMetrics and Insights:")
+    print(scientist_results.get("metrics"))
+    print(scientist_results.get("insights"))
+
+    print("\n=== Step 4: Running Reporter ===")
+    report_path = await report(
+        df=processed_df,
+        profile=analysis_results,
+        operations=operator_output,
+        insights=scientist_results
+    )
+
+    print(f"\n✅ PDF Report Generated: {report_path}")
+    print("\n=== Full Test Completed Successfully ===")
 
 # Run the test
-asyncio.run(test_science())
+if __name__ == "__main__":
+    asyncio.run(test_full_pipeline())

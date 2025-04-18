@@ -21,10 +21,10 @@ async def operate(df: pd.DataFrame, analysis_results: Dict = None) -> Dict:
     )
     sample_data = df.head(3).to_string()
 
-    # Phase 1: Execute critical fixes from analyzer
+    # Phase 1: Execute critical fixes from analyzer
     executed_ops = await _execute_critical_fixes(df, analysis_results)
 
-    # Phase 2: Get domain-specific suggestions
+    # Phase 2: Get domain-specific suggestions and execute them
     prompt = f"""As a data engineer, suggest pandas operations for:
 - Data cleaning
 - Feature engineering
@@ -44,9 +44,26 @@ Provide 3–5 operations with executable code blocks formatted as:
 
     try:
         suggestions = generate_insight(prompt)
+        suggested_ops = _parse_code_blocks(suggestions)
+
+        # Execute the suggested operations
+        for op in suggested_ops:
+            if op['safe_to_execute']:
+                try:
+                    exec(op['code'], globals(), {'df': df})
+                    executed_ops.append({
+                        "operation": op['code'],
+                        "impact": f"Executed: {op['purpose']}"
+                    })
+                except Exception as e:
+                    executed_ops.append({
+                        "operation": op['code'],
+                        "error": str(e)
+                    })
+
         return {
             "executed_operations": executed_ops,
-            "suggested_operations": _parse_code_blocks(suggestions),
+            "suggested_operations": suggested_ops,
             "data_snapshot": _get_data_snapshot(df)
         }
     except Exception as e:
@@ -58,6 +75,7 @@ Provide 3–5 operations with executable code blocks formatted as:
                 "df = pd.get_dummies(df, columns=['category'])"
             ]
         }
+
 
 async def _execute_critical_fixes(df: pd.DataFrame, analysis: Dict) -> List[Dict]:
     """Auto‑executes high‑priority fixes from analyzer"""

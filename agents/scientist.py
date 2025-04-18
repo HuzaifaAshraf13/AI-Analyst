@@ -32,21 +32,26 @@ async def science(df: pd.DataFrame, analysis_results: Optional[Dict] = None) -> 
     dtypes = df.dtypes.apply(str).to_dict()
 
     task_prompt = f"""As an ML engineer, analyze this dataset:
-Columns and types: {dtypes}
+    Columns and types: {dtypes}
 
-Sample Data:
-{sample_data}
+    Sample Data:
+    {sample_data}
 
-Business Context:
-{context}
+    Business Context:
+    {context}
 
-Answer in this JSON format:
-{{
-    "task": "classification|regression|clustering",
-    "target_column": "column_name|None",
-    "feature_columns": ["col1", "col2"],
-    "rationale": "Your reasoning"
-}}"""
+    Please ensure:
+    - Accurately identify if the task is **classification**, **regression**, or **clustering**.
+    - Suggest the most relevant **target column** and **features** based on domain knowledge.
+    - Explain **why** these features are the most predictive for the target variable.
+
+    Output in JSON format:
+    {{
+        "task": "classification|regression|clustering",
+        "target_column": "column_name|None",
+        "feature_columns": ["col1", "col2"],
+        "rationale": "Your detailed reasoning on task and features."
+    }}"""
 
     try:
         task_json = generate_insight(task_prompt)
@@ -66,22 +71,23 @@ Answer in this JSON format:
 
         # Phase 2: Ask Gemini to generate training code
         code_prompt = f"""Create complete scikit-learn code for:
-Task: {task_config['task']}
-Target: {task_config.get('target_column', 'None')}
-Features: {task_config['feature_columns']}
+        Task: {task_config['task']}
+        Target: {task_config.get('target_column', 'None')}
+        Features: {task_config['feature_columns']}
 
-Include:
-1. Train-test split
-2. Model initialization
-3. Training
-4. Evaluation metrics
-5. Feature importance
+        Include:
+        1. Train-test split (80-20 split)
+        2. Model initialization
+        3. Training
+        4. Evaluation metrics
+        5. Feature importance
 
-Format as:
-```python
-# [MODEL TRAINING]
-[code]
-```"""
+        Format as:
+        ```python
+        # [MODEL TRAINING]
+        [code]
+        ```"""
+        
         response = generate_insight(code_prompt)
         training_code = _extract_training_code(response)
         if not training_code:
@@ -106,6 +112,7 @@ Format as:
 
         # BUILT-IN FALLBACK: RandomForest
         return await _fallback_random_forest(df, e)
+
 
 async def _fallback_random_forest(df: pd.DataFrame, error: Exception) -> Dict:
     """Handles fallback to RandomForest in case of failure"""
@@ -165,6 +172,7 @@ async def _fallback_random_forest(df: pd.DataFrame, error: Exception) -> Dict:
         "warnings": [f"Fallback used due to: {str(error)}"]
     }
 
+
 async def _execute_training(df: pd.DataFrame, code: str, config: Dict) -> Dict:
     """Safely executes the generated training code and captures model & metrics"""
     results: Dict = {}
@@ -187,6 +195,8 @@ async def _execute_training(df: pd.DataFrame, code: str, config: Dict) -> Dict:
     except Exception as ex:
         results["warnings"] = [f"Execution warning: {str(ex)}"]
     return results
+
+
 def _extract_training_code(text: str) -> str:
     """Extracts the model training code block from Gemini's response."""
     logger.debug("Raw response from Gemini:\n%s", text)
@@ -210,7 +220,6 @@ def _extract_training_code(text: str) -> str:
 
     logger.debug("Extracted training code:\n%s", code)
     return code
-
 
 
 def _validate_code(code: str) -> bool:
