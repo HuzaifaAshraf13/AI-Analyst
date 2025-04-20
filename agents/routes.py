@@ -1,46 +1,61 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
+import pandas as pd
+import tempfile
+import os
+from pathlib import Path
+import numpy as np
+
 from agents.analyzer import analyze
 from agents.operator import operate
 from agents.scientist import science
 from agents.reporter import report
-import os
-import tempfile
-import pandas as pd
-from pathlib import Path
 
 router = APIRouter()
 
+def sanitize_for_json(data):
+    """Recursively clean non-serializable values like NaN, inf, numpy types"""
+    if isinstance(data, dict):
+        return {k: sanitize_for_json(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_for_json(item) for item in data]
+    elif isinstance(data, float):
+        if np.isnan(data) or np.isinf(data):
+            return None
+        return float(data)
+    elif isinstance(data, (np.integer, np.floating)):
+        return data.item()
+    return data
+
 @router.post("/analyze")
 async def process_file(file: UploadFile = File(...)):
-    """Endpoint to upload and analyze a data file"""
     updates = []
 
     try:
         updates.append("Uploaded file received")
         df = await file_to_dataframe(file)
 
-        # Step 1: Analyzer
         updates.append("Analyzer: Starting data profiling...")
         profile = await analyze(df)
         updates.append("Analyzer: Data profiling complete")
 
-        # Step 2: Operator
         updates.append("Operator: Starting data preprocessing...")
-        operations = await operate(df, profile)  # Pass profile to operator
+        operations = await operate(df, profile)
         updates.append("Operator: Data preprocessing complete")
 
-        # Step 3: Scientist
+        processed_df = operations.get("processed_df", df)
+
         updates.append("Scientist: Building and training model...")
-        insights = await science(df, profile)  # Pass profile to scientist
+        insights = await science(processed_df, profile)
         updates.append("Scientist: Model trained and evaluated")
 
-        # Step 4: Reporter
         updates.append("Reporter: Generating PDF report...")
-        report_path = await report(df, profile, operations, insights)  # Pass all required arguments
+        report_path = await report(processed_df, profile, operations, insights)
         updates.append("Reporter: PDF report generated")
 
-        return {
+        # Sanitize entire payload before sending
+        response = {
             "status": "success",
             "updates": updates,
             "profile": profile,
@@ -49,57 +64,45 @@ async def process_file(file: UploadFile = File(...)):
             "report_url": f"/download-report/{os.path.basename(report_path)}"
         }
 
+        clean_response = sanitize_for_json(response)
+        return JSONResponse(content=clean_response)
+
     except Exception as e:
-        updates.append(f"Error encountered: {str(e)}")
-        raise HTTPException(status_code=400, detail={
-            "error": str(e),
-            "updates": updates
-        })
+        updates.append(f"Error: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Unhandled server error", "updates": updates}
+        )
 
 @router.get("/download-report/{filename}")
 async def download_report(filename: str):
-    """Endpoint to download generated PDF reports"""
-    try:
-        # Secure path construction for PDF reports
-        reports_dir = Path("pdf_reports")
-        file_path = reports_dir / filename
+    reports_dir = Path("pdf_reports")
+    file_path = reports_dir / filename
 
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Report not found")
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail="Invalid file path")
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Report not found")
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail="Invalid file path")
 
-        return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type="application/pdf"
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return FileResponse(path=file_path, filename=filename, media_type="application/pdf")
 
 async def file_to_dataframe(file: UploadFile) -> pd.DataFrame:
-    """Convert uploaded file to pandas DataFrame"""
     tmp_path = None
     try:
-        file_ext = os.path.splitext(file.filename)[1].lower()
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+        ext = os.path.splitext(file.filename)[1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             contents = await file.read()
             tmp.write(contents)
             tmp_path = tmp.name
 
-        if file_ext == '.csv':
-            df = pd.read_csv(tmp_path)
-        elif file_ext in ('.xls', '.xlsx'):
-            df = pd.read_excel(tmp_path)
-        elif file_ext == '.json':
-            df = pd.read_json(tmp_path)
+        if ext == '.csv':
+            return pd.read_csv(tmp_path)
+        elif ext in ['.xls', '.xlsx']:
+            return pd.read_excel(tmp_path)
+        elif ext == '.json':
+            return pd.read_json(tmp_path)
         else:
-            raise ValueError(f"Unsupported file format: {file_ext}")
-
-        return df
-
+            raise ValueError(f"Unsupported file format: {ext}")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

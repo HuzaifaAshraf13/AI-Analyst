@@ -4,6 +4,7 @@ from agents.analyzer import analyze
 from agents.operator import operate
 from agents.scientist import science  # Importing scientist.py
 
+
 async def test_analyzer_operator_scientist_pipeline():
     # Load sample CSV
     df = pd.read_csv("/home/eric/Desktop/Electric_Vehicle_Population_Data.csv")

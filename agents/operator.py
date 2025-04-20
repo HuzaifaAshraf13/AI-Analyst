@@ -62,10 +62,13 @@ Provide 3–5 operations with executable code blocks formatted as:
                     })
 
         return {
-            "executed_operations": executed_ops,
-            "suggested_operations": suggested_ops,
-            "data_snapshot": _get_data_snapshot(df)
-        }
+        "executed_operations": executed_ops,
+        "suggested_operations": suggested_ops,
+        "data_snapshot": _get_data_snapshot(df),
+        
+        "processed_df": df
+    }
+
     except Exception as e:
         return {
             "error": str(e),

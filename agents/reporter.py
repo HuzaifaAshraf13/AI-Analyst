@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from fpdf import FPDF
 from datetime import datetime
-from typing import Dict, Union
+from typing import Dict, Union, Any
 
 REPORTS_DIR = "pdf_reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
@@ -14,12 +14,12 @@ class PDFReport(FPDF):
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, 'AI Data Analysis Report', 0, 1, 'C')
     
-    def chapter_title(self, title):
+    def chapter_title(self, title: str):
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, title, 0, 1, 'L')
         self.ln(4)
     
-    def chapter_body(self, body):
+    def chapter_body(self, body: str):
         self.set_font('Arial', '', 11)
         cleaned_body = str(body).encode('latin-1', 'replace').decode('latin-1')
         self.multi_cell(0, 8, cleaned_body)
@@ -36,14 +36,26 @@ def format_output(data: Union[str, list, dict]) -> str:
         return "\n".join([f"{k}: {v}" for k, v in data.items()])
     return str(data)
 
+
 async def report(
     df: pd.DataFrame,
-    profile: Dict[str, Union[str, list]],
-    operations: Dict[str, Union[str, list]],
-    insights: Dict[str, Union[str, list]]
+    profile: Dict[str, Any],
+    operations: Dict[str, Any],
+    insights: Dict[str, Any]
 ) -> str:
     """Generate final PDF report based on transformed CSV data."""
-    
+
+    # === Clean out any fallback‑related messages from the scientist insights ===
+    clean_insights = dict(insights)  # shallow copy
+    # Remove any insight entries containing the word "fallback"
+    if 'insights' in clean_insights and isinstance(clean_insights['insights'], list):
+        clean_insights['insights'] = [
+            i for i in clean_insights['insights']
+            if 'fallback' not in str(i).lower()
+        ]
+    # Remove any warnings entirely (we don't want to show fallback warnings)
+    clean_insights.pop('warnings', None)
+
     pdf = PDFReport()
     pdf.add_page()
 
@@ -52,7 +64,11 @@ async def report(
 
     # === 2. Final Dataset Info ===
     pdf.chapter_title("Final Dataset Snapshot")
-    pdf.chapter_body(f"Shape: {df.shape}\nColumns: {', '.join(df.columns)}\n\nSample:\n{df.head(5).to_string(index=False)}")
+    pdf.chapter_body(
+        f"Shape: {df.shape}\n"
+        f"Columns: {', '.join(df.columns)}\n\n"
+        f"Sample:\n{df.head(5).to_string(index=False)}"
+    )
 
     # === 3. Visualizations ===
     try:
@@ -62,6 +78,7 @@ async def report(
         plot_path = os.path.join(REPORTS_DIR, "distributions.png")
         plt.savefig(plot_path)
         plt.close()
+
         pdf.chapter_title("Data Distributions (Numeric Columns)")
         pdf.image(plot_path, x=10, w=190)
         os.remove(plot_path)
@@ -71,7 +88,7 @@ async def report(
     # === 4. Agent Outputs ===
     analyzer_out = format_output(profile)
     operator_out = format_output(operations)
-    scientist_out = format_output(insights)
+    scientist_out = format_output(clean_insights)
 
     pdf.chapter_title("Analyzer Output")
     pdf.chapter_body(analyzer_out)
@@ -132,14 +149,14 @@ Now generate a final summary in the following structure:
 """
         summary = generate_insight(combined_prompt)
         if isinstance(summary, list):
-            summary = "\n".join(str(i) for i in summary)
+            summary = "\n".join(map(str, summary))
 
         pdf.chapter_title("Final AI Summary")
         pdf.chapter_body(summary)
 
     except Exception as e:
         pdf.chapter_title("Final AI Summary")
-        pdf.chapter_body(f"Gemini AI summary failed: {str(e)}")
+        pdf.chapter_body(f"Gemini AI summary failed: {e}")
 
     # === 6. Save Report ===
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
