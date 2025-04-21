@@ -1,6 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.encoders import jsonable_encoder
 import pandas as pd
 import tempfile
 import os

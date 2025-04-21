@@ -3,6 +3,7 @@ import pandas as pd
 from typing import Dict, List, Union
 import re
 import os
+import numpy as np 
 
 
 def load_csv(path: str) -> pd.DataFrame:
@@ -13,6 +14,15 @@ def load_csv(path: str) -> pd.DataFrame:
         na_values=['', 'NA', 'null'],
         low_memory=False
     )
+def clean_nans(obj):
+    if isinstance(obj, dict):
+        return {k: clean_nans(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nans(v) for v in obj]
+    elif isinstance(obj, float) and (pd.isna(obj) or np.isinf(obj)):
+        return None
+    return obj
+
 
 
 async def analyze(source: Union[str, pd.DataFrame]) -> Dict:
@@ -77,7 +87,7 @@ async def analyze(source: Union[str, pd.DataFrame]) -> Dict:
             'recommendations': extract_recommendations(ai_analysis)
         }
 
-        return {
+        return clean_nans ({
             "technical_profile": {
                 "shape": df.shape,
                 "columns": list(df.columns),
@@ -87,7 +97,7 @@ async def analyze(source: Union[str, pd.DataFrame]) -> Dict:
             },
             "ai_analysis": sections,
             "preprocessing_ready": format_for_operator(sections['recommendations'])
-        }
+        })
 
     except Exception as e:
         return {

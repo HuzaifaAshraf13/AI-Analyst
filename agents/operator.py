@@ -3,6 +3,8 @@ import pandas as pd
 from typing import Dict, List
 import ast
 import re
+import numpy as np
+
 
 async def operate(df: pd.DataFrame, analysis_results: Dict = None) -> Dict:
     """
@@ -61,13 +63,13 @@ Provide 3–5 operations with executable code blocks formatted as:
                         "error": str(e)
                     })
 
-        return {
+        return  clean_nans ({
         "executed_operations": executed_ops,
         "suggested_operations": suggested_ops,
         "data_snapshot": _get_data_snapshot(df),
         
         "processed_df": df
-    }
+    })
 
     except Exception as e:
         return {
@@ -139,6 +141,15 @@ def _parse_code_blocks(text: str) -> List[Dict]:
             "safe_to_execute": _validate_code(code)
         })
     return blocks
+def clean_nans(obj):
+    if isinstance(obj, dict):
+        return {k: clean_nans(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nans(v) for v in obj]
+    elif isinstance(obj, float) and (pd.isna(obj) or np.isinf(obj)):
+        return None
+    return obj
+
 
 def _validate_code(code: str) -> bool:
     """Basic code safety check"""

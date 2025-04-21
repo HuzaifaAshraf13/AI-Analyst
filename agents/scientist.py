@@ -6,6 +6,7 @@ import numpy as np
 import re  # Import the re module
 import ast
 from typing import Dict, Optional, List
+import numpy as np
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -57,6 +58,17 @@ async def _safe_generate_insight(prompt: str, retries: int = 2, timeout: float =
         except Exception as e:
             logger.warning(f"Gemini error: {e}")
     return ""
+
+
+def clean_nans(obj):
+    if isinstance(obj, dict):
+        return {k: clean_nans(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nans(v) for v in obj]
+    elif isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
+    return obj
+
 
 
 def _sanitize_gemini_response(text: str) -> str:
@@ -153,7 +165,7 @@ async def _enhanced_fallback(df: pd.DataFrame, error: Exception) -> Dict:
         "report": classification_report(yte, preds, output_dict=True)
     }
 
-    return {
+    return clean_nans({
         "model_type": type(model).__name__,
         "task": task,
         "target": target,
@@ -162,7 +174,7 @@ async def _enhanced_fallback(df: pd.DataFrame, error: Exception) -> Dict:
         "insights": [],
         "training_code": None,
         "warnings": ["Used fallback strategy due to Gemini failure"]
-    }
+    })
 
 
 # ---------- MAIN ENTRY POINT ----------
@@ -196,6 +208,7 @@ Output JSON:
             config['task'] = 'regression'
 
         if config['target_column'] not in df.columns:
+            logger.warning(f"Invalid target from Gemini: {config['target_column']}. Triggering fallback.")
             raise ValueError(f"Invalid target: {config['target_column']}")
         invalid = [col for col in config['feature_columns'] if col not in df.columns]
         if invalid:
@@ -241,7 +254,7 @@ Please:
         if structured_insight.strip():
             results.setdefault("insights", []).append(structured_insight.strip())
 
-        return {
+        return  clean_nans({
             "model_type": results.get("model_type"),
             "task": config["task"],
             "target": config["target_column"],
@@ -250,7 +263,7 @@ Please:
             "insights": results.get("insights"),
             "training_code": code,
             "warnings": results.get("warnings", [])
-        }
+        })
 
     except Exception as e:
         logger.error(f"AI path failed: {e}")
