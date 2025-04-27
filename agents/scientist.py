@@ -3,10 +3,13 @@ import asyncio
 import json
 import logging
 import numpy as np
-import re  # Import the re module
+import re
 import ast
+import os
+import pickle
+from time import sleep
+from datetime import datetime
 from typing import Dict, Optional, List
-import numpy as np
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -19,47 +22,57 @@ from sklearn.metrics import (
     mean_squared_error,
     mean_absolute_error,
     r2_score,
-    accuracy_score,
-    root_mean_squared_error
+    accuracy_score
 )
 
 from utils.gemini_client import generate_insight
 
 # Logging configuration
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------- INSIGHT HELPERS ----------
+# Directories
+GENERATED_DIR = "generated_training_scripts"
+MODELS_DIR = "saved_models"
+os.makedirs(GENERATED_DIR, exist_ok=True)
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+# --- Helper: Insights ---
 def _generate_model_insights(model, features: List[str], target: Optional[str]) -> List[str]:
     insights = []
     try:
         if hasattr(model, 'feature_importances_'):
             imp = dict(zip(features, model.feature_importances_))
             top, val = max(imp.items(), key=lambda x: x[1])
-            insights.append(f"Most important feature: '{top}' ({val:.2f})")
+            if val == 0:
+                insights.append("Warning: model feature importances are all zero.")
+            else:
+                insights.append(f"Most important feature: '{top}' ({val:.2f})")
         elif hasattr(model, 'coef_'):
             coefs = model.coef_.ravel()
             top, val = max(zip(features, coefs), key=lambda x: abs(x[1]))
             insights.append(f"Strongest predictor: '{top}' ({val:.2f})")
         if target:
-            insights.append(f"Model trained to predict '{target}' using {len(features)} features")
-    except Exception:
-        insights.append("Could not extract model insights")
+            insights.append(f"Trained to predict '{target}' using {len(features)} features.")
+    except Exception as e:
+        insights.append(f"Insight extraction failed: {e}")
     return insights
 
-
-# ---------- GEMINI UTILITIES ----------
-async def _safe_generate_insight(prompt: str, retries: int = 2, timeout: float = 10.0) -> str:
-    for attempt in range(1, retries + 1):
+# --- Safe Gemini call with backoff ---
+async def _safe_generate_insight(prompt: str, retries: int = 3, timeout: float = 15.0) -> str:
+    delay = 1
+    for attempt in range(retries):
         try:
             result = await asyncio.wait_for(asyncio.to_thread(generate_insight, prompt), timeout=timeout)
             if isinstance(result, str) and result.strip():
                 return result
         except Exception as e:
-            logger.warning(f"Gemini error: {e}")
+            logger.warning(f"Gemini attempt {attempt+1} failed: {e}")
+        sleep(delay)
+        delay *= 2
     return ""
 
-
+# --- Clean NaNs ---
 def clean_nans(obj):
     if isinstance(obj, dict):
         return {k: clean_nans(v) for k, v in obj.items()}
@@ -69,202 +82,173 @@ def clean_nans(obj):
         return None
     return obj
 
-
-
-def _sanitize_gemini_response(text: str) -> str:
+# --- Sanitize and extract ---
+def _sanitize(text: str) -> str:
     return re.sub(r'[\x00-\x1F\x7F]', '', text).strip()
 
-
-def _extract_json_block(text: str) -> Optional[str]:
+def _extract_json(text: str) -> Optional[str]:
     m = re.search(r'\{[\s\S]*?\}', text)
     return m.group(0) if m else None
-
 
 def _validate_code(code: str) -> bool:
     try:
         ast.parse(code)
         blacklist = ['os.', 'sys.', '__import__', 'open(', 'eval(', 'exec(', 'subprocess']
-        return not any(bad in code.lower() for bad in blacklist)
+        return not any(b in code.lower() for b in blacklist)
     except:
         return False
 
-
-def _extract_training_code(text: str) -> str:
-    match = re.findall(r'```python(?:\s*#\s*\[MODEL TRAINING\])?\n([\s\S]+?)```', text)
+def _extract_code(text: str) -> str:
+    match = re.findall(r'```python[\s\S]*?\n([\s\S]+?)```', text)
     code = "\n".join(match).strip()
     return code if _validate_code(code) else ""
 
-
-# ---------- EXECUTION ----------
-async def _execute_training(df: pd.DataFrame, code: str, config: Dict) -> Dict:
-    local_vars = {
-        'df': df, 'pd': pd, 'np': np,
+# --- Execute training code ---
+async def _execute_training(df: pd.DataFrame, code: str, cfg: Dict) -> Dict:
+    local = {'df': df.copy()}
+    # inject libs
+    local.update({
         'train_test_split': train_test_split,
         'RandomForestClassifier': RandomForestClassifier,
         'RandomForestRegressor': RandomForestRegressor,
-        'LabelEncoder': LabelEncoder,
-        'StandardScaler': StandardScaler,
         'LogisticRegression': LogisticRegression,
         'LinearRegression': LinearRegression,
         'DecisionTreeClassifier': DecisionTreeClassifier,
         'DecisionTreeRegressor': DecisionTreeRegressor,
         'SVC': SVC, 'SVR': SVR,
-        'classification_report': classification_report,
-        'mean_squared_error': mean_squared_error,
-        'mean_absolute_error': mean_absolute_error,
-        'r2_score': r2_score,
-        'accuracy_score': accuracy_score,
-        'root_mean_squared_error': root_mean_squared_error
-    }
-
-    results = {}
+        'LabelEncoder': LabelEncoder,
+        'StandardScaler': StandardScaler,
+        'np': np
+    })
+    out = {}
     try:
-        exec(code, globals(), local_vars)
-        model = local_vars.get("model")
-        metrics = local_vars.get("metrics", {})
-
-        results["model_type"] = type(model).__name__ if model else "Unknown"
-        results["metrics"] = metrics
-        if model and config["task"] != "clustering":
-            results["insights"] = _generate_model_insights(model, config["feature_columns"], config["target_column"])
+        # save script
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        path = os.path.join(GENERATED_DIR, f"train_{cfg['task']}_{ts}.py")
+        with open(path, 'w') as f: f.write(code)
+        # exec code
+        exec(code, {}, local)
+        model = local.get('model')
+        metrics = local.get('metrics', {})
+        out['model_type'] = type(model).__name__ if model else None
+        out['metrics'] = metrics
+        out['insights'] = _generate_model_insights(model, cfg['feature_columns'], cfg['target_column'])
+        # save model
+        if model:
+            mp = os.path.join(MODELS_DIR, f"{out['model_type']}_{cfg['target_column']}_{ts}.pkl")
+            with open(mp, 'wb') as mf: pickle.dump(model, mf)
+            out['model_path'] = mp
     except Exception as e:
-        results["warnings"] = [f"Execution warning: {str(e)}"]
-        results["metrics"] = {"error": str(e)}
-        results["insights"] = ["Failed to generate model insights"]
-    return results
+        out = {'warnings': [f"Execution error: {e}"]}
+    return out
 
-
-# ---------- FALLBACK ----------
-async def _enhanced_fallback(df: pd.DataFrame, error: Exception) -> Dict:
-    logger.warning(f"Enhanced fallback due to: {error}")
-    df2 = df.copy()
-    df2 = df2.drop(columns=[c for c in ['id', 'uuid', 'timestamp', 'last_transaction'] if c in df2.columns], errors='ignore')
-
-    # Exclude datetime64 columns from the model
-    df2 = df2.select_dtypes(exclude=['datetime64[ns]', 'datetime64[ns, UTC]'])
-
+# --- Fallback ---
+async def _fallback(df: pd.DataFrame, err: Exception) -> Dict:
+    logger.warning(f"Fallback triggered: {err}")
+    df2 = df.copy().select_dtypes(exclude=['datetime64[ns]', 'datetime64[ns, UTC]'])
     for c in df2.select_dtypes(include='object').columns:
         df2[c] = LabelEncoder().fit_transform(df2[c].astype(str))
-
-    target = df2.select_dtypes(include='number').var().idxmax()
-    features = [c for c in df2.columns if c != target]
-    X, y = df2[features], df2[target]
+    tgt = df2.select_dtypes(include='number').var().idxmax()
+    feats = [c for c in df2.columns if c != tgt]
+    X, y = df2[feats], df2[tgt]
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    task = 'regression' if y.nunique() > 10 else 'classification'
+    task = 'regression' if y.unique().size > 10 else 'classification'
     model = RandomForestRegressor() if task == 'regression' else RandomForestClassifier()
     model.fit(Xtr, ytr)
-    preds = model.predict(Xte)
-
-    metrics = {
-        "rmse": root_mean_squared_error(yte, preds),
-        "mae": mean_absolute_error(yte, preds),
-        "r2": r2_score(yte, preds)
-    } if task == 'regression' else {
-        "accuracy": accuracy_score(yte, preds),
-        "report": classification_report(yte, preds, output_dict=True)
-    }
-
+    pred = model.predict(Xte)
+    met = (
+        {'rmse': mean_squared_error(yte, pred, squared=False), 'mae': mean_absolute_error(yte, pred), 'r2': r2_score(yte, pred)}
+        if task == 'regression' else
+        {'accuracy': accuracy_score(yte, pred), 'report': classification_report(yte, pred, output_dict=True)}
+    )
     return clean_nans({
-        "model_type": type(model).__name__,
-        "task": task,
-        "target": target,
-        "features": features,
-        "metrics": metrics,
-        "insights": [],
-        "training_code": None,
-        "warnings": ["Used fallback strategy due to Gemini failure"]
+        'model_type': type(model).__name__,
+        'task': task,
+        'target': tgt,
+        'features': feats,
+        'metrics': met,
+        'insights': [],
+        'warnings': ['fallback used']
     })
 
-
-# ---------- MAIN ENTRY POINT ----------
+# --- Main ---
 async def science(df: pd.DataFrame, analysis_results: Optional[Dict] = None) -> Dict:
-    context = analysis_results.get("ai_analysis", {}).get("context", "") if analysis_results else ""
+    # Steer Gemini to valid targets
+    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    cat_cols = [c for c in df.columns if df[c].nunique() <= 20]
+    context = (analysis_results.get('ai_analysis', {}) or {}).get('context', '')
     dtypes = df.dtypes.apply(str).to_dict()
     sample = df.head(3).to_string()
 
-    prompt1 = f"""As an ML engineer, analyze this dataset:
-Columns & types: {dtypes}
-Sample:\n{sample}
-Context: {context}
-
-Identify the ML task (classification, regression, clustering),
-choose the target column and feature columns, and justify.
-Output JSON:
-{{"task":"...","target_column":"...","feature_columns":[...],"rationale":"..."}}"""
+    prompt1 = (
+        f"As an ML engineer, given columns & types: {dtypes} and sample:\n{sample}\n"
+        f"Context: {context}\n\n"
+        f"Valid regression targets: {numeric_cols}\n"
+        f"Valid classification targets (<=20 classes): {cat_cols}\n\n"
+        f"Identify the ML task (classification or regression), choose one valid target_column "
+        f"and feature_columns, and provide a rationale. Output JSON:\n"
+        f'{{\"task\":\"...\",\"target_column\":\"...\",\"feature_columns\":[...],\"rationale\":\"...\"}}'
+    )
 
     try:
-        resp1 = await _safe_generate_insight(prompt1)
-        json_str = _extract_json_block(resp1)
-        if not json_str:
-            raise ValueError("Gemini did not return JSON")
+        # Generate the task and feature selection insights from Gemini
+        r1 = await _safe_generate_insight(prompt1)
+        jb = _extract_json(r1)
+        if not jb:
+            raise ValueError("No JSON from Gemini")
+        cfg = json.loads(_sanitize(jb))
+        cfg['task'] = cfg.get('task', 'regression').lower()
+        if cfg['task'] not in ['classification', 'regression']:
+            cfg['task'] = 'regression'
 
-        config = json.loads(_sanitize_gemini_response(json_str))
-        config['task'] = config['task'].lower()
+        # Validate target column dtype
+        tgt = cfg['target_column']
+        if df[tgt].nunique() <= 1:
+            raise ValueError(f"Target variable '{tgt}' has constant values. R² cannot be computed.")
 
-        # Handle invalid tasks
-        if config['task'] not in ['classification', 'regression', 'clustering']:
-            logger.warning(f"Invalid task '{config['task']}' received from Gemini. Defaulting to regression.")
-            config['task'] = 'regression'
+        if cfg['task'] == 'regression' and tgt not in numeric_cols:
+            raise ValueError(f"Invalid regression target: {tgt}")
+        if cfg['task'] == 'classification' and tgt not in cat_cols:
+            raise ValueError(f"Invalid classification target: {tgt}")
 
-        if config['target_column'] not in df.columns:
-            logger.warning(f"Invalid target from Gemini: {config['target_column']}. Triggering fallback.")
-            raise ValueError(f"Invalid target: {config['target_column']}")
-        invalid = [col for col in config['feature_columns'] if col not in df.columns]
+        # Validate features
+        invalid = [c for c in cfg.get('feature_columns', []) if c not in df.columns]
         if invalid:
             raise ValueError(f"Invalid feature columns: {invalid}")
 
-        prompt2 = f"""Write complete scikit-learn training code for:
-Task: {config['task']}
-Target: {config['target_column']}
-Features: {config['feature_columns']}
-Use train_test_split, train, predict, and store performance in a `metrics` dict.
-End with `model = ...` and `metrics = {{...}}`
-Output only:
-```python
-# [MODEL TRAINING]
-...your code...
-```"""
+        # Split the data before preprocessing
+        X = df[cfg['feature_columns']]
+        y = df[tgt]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        resp2 = await _safe_generate_insight(prompt2)
-        code = _extract_training_code(resp2)
+        # Generate model training code using Gemini
+        prompt2 = (
+            f"Write complete scikit-learn training code for:\n"
+            f"Task: {cfg['task']}\n"
+            f"Target: {tgt}\n"
+            f"Features: {cfg['feature_columns']}\n"
+            f"Use train_test_split, train, predict, and store performance in a `metrics` dict.\n"
+            f"End with `model = ...` and `metrics = {{...}}`\n"
+            f"Output only:\n```python\n# [MODEL TRAINING]\n...code...\n```"
+        )
+
+        r2 = await _safe_generate_insight(prompt2)
+        code = _extract_code(r2)
         if not code:
-            raise ValueError("No valid code block extracted from Gemini")
+            raise ValueError("No valid code extracted")
 
-        results = await _execute_training(df, code, config)
+        res = await _execute_training(df, code, cfg)
 
-        # Generate business insight from model results
-        insight_prompt = f"""
-You are a lead data scientist. Based on this dataset:
-- Shape: {df.shape}
-- Columns: {list(df.columns)}
-- ML Task: {config['task']}
-- Target: {config['target_column']}
-- Features used: {config['feature_columns']}
-- Model performance: {results.get('metrics')}
+        # Business insights based on the generated metrics
+        bp = f"Given performance {res.get('metrics')}, summarize key trends and recommendations."
+        bi = await _safe_generate_insight(bp)
+        if bi:
+            res.setdefault('insights', []).append(bi.strip())
 
-Please:
-1. Summarize data trends and patterns.
-2. Explain what these patterns reveal.
-3. Predict future trends or behaviors.
-4. Suggest business/modeling recommendations.
-"""
-
-        structured_insight = await _safe_generate_insight(insight_prompt)
-        if structured_insight.strip():
-            results.setdefault("insights", []).append(structured_insight.strip())
-
-        return  clean_nans({
-            "model_type": results.get("model_type"),
-            "task": config["task"],
-            "target": config["target_column"],
-            "features": config["feature_columns"],
-            "metrics": results.get("metrics"),
-            "insights": results.get("insights"),
-            "training_code": code,
-            "warnings": results.get("warnings", [])
-        })
+        # Return results with insights
+        return clean_nans({**cfg, **res})
 
     except Exception as e:
-        logger.error(f"AI path failed: {e}")
-        return await _enhanced_fallback(df, e)
+        logger.error(f"Error during science execution: {e}")
+        return await _fallback(df, e)
+

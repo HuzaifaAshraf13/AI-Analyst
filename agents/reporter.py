@@ -1,33 +1,36 @@
 from utils.gemini_client import generate_insight
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 from fpdf import FPDF
 from datetime import datetime
 from typing import Dict, Union, Any
 
+# === Setup Directories ===
 REPORTS_DIR = "pdf_reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
+# === PDF Report Class ===
 class PDFReport(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 12)
-        self.cell(0, 10, 'AI Data Analysis Report', 0, 1, 'C')
-    
+        self.cell(0, 10, 'Comprehensive Data Analysis Report', 0, 1, 'C')
+
     def chapter_title(self, title: str):
         self.set_font('Arial', 'B', 12)
         self.cell(0, 10, title, 0, 1, 'L')
         self.ln(4)
-    
+
     def chapter_body(self, body: str):
         self.set_font('Arial', '', 11)
         cleaned_body = str(body).encode('latin-1', 'replace').decode('latin-1')
         self.multi_cell(0, 8, cleaned_body)
         self.ln()
 
-
+# === Helper Functions ===
 def format_output(data: Union[str, list, dict]) -> str:
-    """Format agent output into clean string."""
+    """Convert data to string format."""
     if isinstance(data, str):
         return data
     elif isinstance(data, list):
@@ -36,129 +39,171 @@ def format_output(data: Union[str, list, dict]) -> str:
         return "\n".join([f"{k}: {v}" for k, v in data.items()])
     return str(data)
 
+def save_feature_importance_plot(df: pd.DataFrame, feature_importance: Dict[str, float], path: str):
+    """Save feature importance plot to a file."""
+    plt.figure(figsize=(10, 6))
+    features = list(feature_importance.keys())
+    importances = list(feature_importance.values())
+    sns.barplot(x=importances, y=features, palette='viridis')
+    plt.xlabel('Importance Score')
+    plt.title('Feature Importance')
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()
 
+def save_correlation_heatmap(df: pd.DataFrame, path: str):
+    """Save correlation heatmap to a file."""
+    plt.figure(figsize=(12, 10))
+    corr = df.select_dtypes(include='number').corr()
+    sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", square=True, cbar=True)
+    plt.title('Correlation Heatmap')
+    plt.tight_layout()
+    plt.savefig(path)
+    plt.close()
+
+# === Main Reporting Function ===
 async def report(
     df: pd.DataFrame,
     profile: Dict[str, Any],
     operations: Dict[str, Any],
     insights: Dict[str, Any]
 ) -> str:
-    """Generate final PDF report based on transformed CSV data."""
-
-    # === Clean out any fallback‑related messages from the scientist insights ===
-    clean_insights = dict(insights)  # shallow copy
-    # Remove any insight entries containing the word "fallback"
+    """Generate a professional, academic-style PDF report based on transformed data."""
+    
+    # Clean insights
+    clean_insights = dict(insights)
     if 'insights' in clean_insights and isinstance(clean_insights['insights'], list):
         clean_insights['insights'] = [
             i for i in clean_insights['insights']
             if 'fallback' not in str(i).lower()
         ]
-    # Remove any warnings entirely (we don't want to show fallback warnings)
     clean_insights.pop('warnings', None)
 
+    # Create PDF
     pdf = PDFReport()
     pdf.add_page()
 
     # === 1. Metadata ===
     pdf.chapter_title(f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # === 2. Final Dataset Info ===
+    # === 2. Dataset Snapshot ===
     pdf.chapter_title("Final Dataset Snapshot")
+    sample_text = df.sample(min(5, len(df))).to_string(index=False)
     pdf.chapter_body(
         f"Shape: {df.shape}\n"
         f"Columns: {', '.join(df.columns)}\n\n"
-        f"Sample:\n{df.head(5).to_string(index=False)}"
+        f"Sample Rows:\n{sample_text}"
     )
 
-    # === 3. Visualizations ===
+    # === 3. Data Visualizations ===
     try:
+        # Histograms
+        hist_path = os.path.join(REPORTS_DIR, "histograms.png")
         plt.figure(figsize=(12, 10))
         df.select_dtypes(include='number').hist(bins=30, edgecolor='black', grid=False)
         plt.tight_layout()
-        plot_path = os.path.join(REPORTS_DIR, "distributions.png")
-        plt.savefig(plot_path)
+        plt.savefig(hist_path)
         plt.close()
+        pdf.chapter_title("Data Distributions")
+        pdf.image(hist_path, x=10, w=190)
+        os.remove(hist_path)
 
-        pdf.chapter_title("Data Distributions (Numeric Columns)")
-        pdf.image(plot_path, x=10, w=190)
-        os.remove(plot_path)
+        # Correlation Heatmap
+        heatmap_path = os.path.join(REPORTS_DIR, "correlation_heatmap.png")
+        save_correlation_heatmap(df, heatmap_path)
+        pdf.chapter_title("Correlation Heatmap")
+        pdf.image(heatmap_path, x=10, w=190)
+        os.remove(heatmap_path)
+
     except Exception as e:
         pdf.chapter_body(f"Failed to generate visualizations: {e}")
 
-    # === 4. Agent Outputs ===
-    analyzer_out = format_output(profile)
-    operator_out = format_output(operations)
-    scientist_out = format_output(clean_insights)
-
+    # === 4. Analyzer, Operator, Scientist Outputs ===
     pdf.chapter_title("Analyzer Output")
-    pdf.chapter_body(analyzer_out)
+    try:
+        analyzer_out = format_output(profile)
+        pdf.chapter_body(f"The Analyzer agent performs an initial check on the dataset to ensure it is structurally valid and highlights any potential issues. Here are the results:\n\n{analyzer_out}")
+    except Exception as e:
+        pdf.chapter_body(f"Analyzer Output Error: {e}")
 
     pdf.chapter_title("Operator Output")
-    pdf.chapter_body(operator_out)
+    try:
+        operator_out = format_output(operations)
+        pdf.chapter_body(f"The Operator agent performs preprocessing tasks on the dataset. This includes handling missing values, outliers, and other necessary transformations. Here are the operations performed:\n\n{operator_out}")
+    except Exception as e:
+        pdf.chapter_body(f"Operator Output Error: {e}")
 
     pdf.chapter_title("Scientist Output")
-    pdf.chapter_body(scientist_out)
+    try:
+        scientist_out = format_output(clean_insights)
+        pdf.chapter_body(f"The Scientist agent performs an in-depth analysis and modeling based on the cleaned data. It generates insights and suggests recommendations. Here are the findings and insights:\n\n{scientist_out}")
+    except Exception as e:
+        pdf.chapter_body(f"Scientist Output Error: {e}")
 
-    # === 5. Final AI Summary ===
+    # === 5. Final AI Research Paper-Style Summary ===
+    pdf.chapter_title("Comprehensive Research Summary")
     try:
         combined_prompt = f"""
-You are an AI analyst. Based on the final dataset below and the AI pipeline results, write a structured analysis.
+You are a professional Data Scientist preparing an academic research paper.
 
-Final CSV Snapshot:
+Use the following structure:
+
+---
+# Title: Comprehensive Data Analysis and Predictive Modeling of Electric Range
+
+## Abstract
+- Summarize objectives, dataset, methods, and findings.
+
+## 1. Introduction
+- Discuss the broader context and problem being solved.
+
+## 2. Data and Methodology
+- Explain dataset dimensions, types, preprocessing, and feature engineering.
+
+## 3. Exploratory Data Analysis
+- Highlight distributions, correlations, and initial insights.
+
+## 4. Modeling Approach
+- Describe ML models, tasks, validation strategies.
+
+## 5. Results
+- Report metrics (MSE, R²).
+- Discuss feature importance.
+
+## 6. Discussion
+- Interpret results, limitations, future opportunities.
+
+## 7. Conclusion
+- Summarize key takeaways and recommendations.
+
+---
+
+# Data Snapshot:
 {df.head(5).to_string(index=False)}
 
-Column Dtypes:
+# Column Types:
 {df.dtypes.apply(str).to_dict()}
 
-Pipeline Outputs:
-[1] Analyzer Output:
+# Analyzer Output:
 {analyzer_out}
 
-[2] Operator Output:
+# Operator Output:
 {operator_out}
 
-[3] Scientist Output:
+# Scientist Output:
 {scientist_out}
 
-Now generate a final summary in the following structure:
-
----
-
-### 🧠 Data Quality & Structure
-- Describe column types, data quality issues, missing values, and outliers.
-- Summarize the business context.
-
----
-
-### 🧹 Preprocessing Actions
-- List transformations that were executed or suggested.
-- Mention any skipped operations needing review.
-
----
-
-### 📊 Modeling & Results
-- Summarize the ML task, target, model type, and performance metrics.
-- Highlight key insights and feature importance.
-
----
-
-### 📌 Key Recommendations
-- Suggest next steps for improving the pipeline, model, or data quality.
-
----
+Compose a detailed academic report based on the provided information.
+Use formal research-style English.
 """
-        summary = generate_insight(combined_prompt)
+        summary = await generate_insight(combined_prompt)
         if isinstance(summary, list):
             summary = "\n".join(map(str, summary))
-
-        pdf.chapter_title("Final AI Summary")
         pdf.chapter_body(summary)
-
     except Exception as e:
-        pdf.chapter_title("Final AI Summary")
         pdf.chapter_body(f"Gemini AI summary failed: {e}")
 
-    # === 6. Save Report ===
+    # === 6. Save the Report ===
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"analysis_report_{timestamp}.pdf"
     report_path = os.path.join(REPORTS_DIR, filename)

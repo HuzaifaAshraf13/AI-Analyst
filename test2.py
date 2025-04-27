@@ -29,6 +29,10 @@ async def test_full_pipeline():
         print("\n=== Step 2: Running Operator ===")
         operator_output = await operate(df, analysis_results=analysis_results)
 
+        if not operator_output:
+            print("Error: Operator returned no valid results.")
+            return
+
         print("\nExecuted Operations:")
         for op in operator_output.get("executed_operations", []):
             print("-", op)
