@@ -59,3 +59,6 @@ reports/
 
 # macOS
 .DS_Store
+
+#pdf files
+pdf_reports
