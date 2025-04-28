@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Data Scientist – Upload</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        background: linear-gradient(135deg, #12298d 0%, #6524a7 100%);
+        font-family: "Poppins", sans-serif;
+      }
+
+      .glass {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      /* .progress-bar {
+        animation: progress 2s infinite ease-in-out;
+      }
+
+      @keyframes progress {
+        0% {
+          width: 0;
+        }
+
+        50% {
+          width: 80%;
+        }
+
+        100% {
+          width: 0;
+        }
+      } */
+    </style>
+  </head>
+
+  <body class="flex items-center justify-center min-h-screen text-white">
+    <div class="glass p-10 rounded-3xl shadow-2xl max-w-xl w-full">
+      <h2 class="text-3xl font-bold mb-4 text-center">
+        🧠 Meet <span class="text-yellow-300">Fiona</span>
+      </h2>
+      <p class="text-center text-white/80 mb-4">
+        Your Personal AI Data Scientist
+      </p>
+
+      <div class="text-sm text-white/70 text-center italic mb-4">
+        "Hi, I'm Fiona. Upload your data and I'll take it from here."
+      </div>
+
+      <form
+        action="/api/analyze"
+        method="POST"
+        enctype="multipart/form-data"
+        class="space-y-6"
+      >
+        <label
+          class="flex flex-col items-center justify-center w-full p-8 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:bg-white/40 transition"
+        >
+          <svg
+            class="w-12 h-12 mb-3 text-white/60"
+            viewBox="0 0 48 48"
+            stroke="currentColor"
+            id="file-icon"
+          >
+            <path
+              d="M23.970703 6 A 2.0002 2.0002 0 0 0 22.585938 6.5859375L16.585938 12.585938 A 2.0002 2.0002 0 1 0 19.414062 15.414062L22 12.828125L22 31 A 2.0002 2.0002 0 1 0 26 31L26 12.828125L28.585938 15.414062 A 2.0002 2.0002 0 1 0 31.414062 12.585938L25.414062 6.5859375 A 2.0002 2.0002 0 0 0 23.970703 6 z M 12 17C8.7099679 17 6 19.709968 6 23L6 36C6 39.290032 8.7099679 42 12 42L36 42C39.290032 42 42 39.290032 42 36L42 23C42 19.709968 39.290032 17 36 17L35 17 A 2.0002 2.0002 0 1 0 35 21L36 21C37.127968 21 38 21.872032 38 23L38 36C38 37.127968 37.127968 38 36 38L12 38C10.872032 38 10 37.127968 10 36L10 23C10 21.872032 10.872032 21 12 21L13 21 A 2.0002 2.0002 0 1 0 13 17L12 17 z"
+              fill="#ffffff"
+            />
+          </svg>
+
+          <!-- 2nd Icon -->
+          <svg
+            class="w-12 h-12 mb-3 text-white/60 hidden" 
+            viewBox="0 0 48 48"
+            stroke="currentColor"
+            id="second-file-icon"
+          >
+            <path
+              d="M12.5 4C10.019 4 8 6.019 8 8.5L8 22.050781C6.8698775 22.287658 6 23.307501 6 24.5L6 35.5C6 36.692499 6.8698775 37.712342 8 37.949219L8 39.5C8 41.981 10.019 44 12.5 44L35.5 44C37.981 44 40 41.981 40 39.5L40 37.949219C41.130122 37.712342 42 36.692499 42 35.5L42 24.5C42 23.307501 41.130122 22.287658 40 22.050781L40 20L28.5 20C26.019 20 24 17.981 24 15.5L24 4L12.5 4 z M 27 4.8789062L27 15.5C27 16.327 27.673 17 28.5 17L39.121094 17L27 4.8789062 z M 9 25L39 25L39 35L9 35L9 25 z M 17.292969 26C15.477969 26 14 27.794 14 30C14 32.206 15.477969 34 17.292969 34C18.738969 34 19.603719 33.019453 19.886719 32.439453C20.129719 31.943453 19.924734 31.344562 19.427734 31.101562C18.931734 30.859562 18.333797 31.064547 18.091797 31.560547C18.089797 31.564547 17.851969 32 17.292969 32C16.604969 32 16 31.065 16 30C16 28.935 16.604969 28 17.292969 28C17.816969 28 18.052609 28.374078 18.099609 28.455078C18.346609 28.939078 18.938688 29.138437 19.429688 28.898438C19.925687 28.656437 20.131672 28.056547 19.888672 27.560547C19.605672 26.980547 18.739969 26 17.292969 26 z M 23.625 26C22.247 26 21.125 27.122 21.125 28.5C21.125 29.878 22.247 31 23.625 31L24.5 31C24.776 31 25 31.224 25 31.5C25 31.776 24.776 32 24.5 32L23.408203 32C23.066203 32 22.785031 31.745969 22.707031 31.667969C22.316031 31.276969 21.683969 31.276969 21.292969 31.667969C20.901969 32.058969 20.901969 32.691031 21.292969 33.082031C21.568969 33.358031 22.327203 34 23.408203 34L24.5 34C25.878 34 27 32.878 27 31.5C27 30.122 25.878 29 24.5 29L23.625 29C23.349 29 23.125 28.776 23.125 28.5C23.125 28.224 23.349 28 23.625 28L24.5 28C24.804 28 25.041969 28.208031 25.042969 28.207031C25.433969 28.597031 26.066031 28.598031 26.457031 28.207031C26.848031 27.816031 26.848031 27.183969 26.457031 26.792969C26.376031 26.711969 25.631 26 24.5 26L23.625 26 z M 29.005859 26C28.875844 25.999312 28.742984 26.022922 28.615234 26.076172C28.105234 26.289172 27.864172 26.874766 28.076172 27.384766L30.576172 33.384766C30.731172 33.756766 31.096 34 31.5 34C31.904 34 32.267828 33.756766 32.423828 33.384766L34.923828 27.384766C35.135828 26.874766 34.894766 26.288172 34.384766 26.076172C33.872766 25.863172 33.287172 26.106234 33.076172 26.615234L31.5 30.400391L29.923828 26.615234C29.764828 26.233484 29.395906 26.002063 29.005859 26 z"
+              fill="#ffffff"
+            />
+          </svg>
+
+          <span id="file-label-text" class="text-white/80 font-medium"
+            >Click or drag file to upload</span
+          >
+          <p id="file-name" class="text-white/60 text-sm mt-2"></p>
+          <input type="file" name="file" class="hidden" accept=".csv" />
+        </label>
+        <div
+          id="error-message"
+          class="text-red-500 text-center mt-4 hidden"
+        ></div>
+
+        <button
+          type="submit"
+          class="w-full py-3 bg-white text-purple-700 font-semibold rounded-xl hover:bg-purple-200 transition duration-200"
+        >
+          Start Analysis
+        </button>
+      </form>
+
+      <!-- Hidden by default -->
+      <div class="mt-10 hidden" id="progress-container">
+        <p id="status-text" class="text-sm text-white/60 mb-1">
+          Fiona is analyzing your file...
+        </p>
+        <div class="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+          <div
+            class="h-full bg-white/80 rounded-full progress-bar"
+            id="progress-bar"
+          ></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const form = document.querySelector("form");
+      const errorMessage = document.getElementById("error-message");
+      const fileInput = document.querySelector('input[type="file"]');
+      const fileLabel = document.querySelector("label");
+      const fileLabelText = document.getElementById("file-label-text");
+      const fileNameDisplay = document.getElementById("file-name");
+      const statusText = document.getElementById("status-text");
+      const progressBar = document.getElementById("progress-bar");
+      const progressContainer = document.getElementById("progress-container");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const file = fileInput.files[0];
+        if (!file) {
+          errorMessage.textContent = "Please upload a file.";
+          errorMessage.classList.remove("hidden");
+          return;
+        }
+
+        const ext = file.name.split(".").pop().toLowerCase();
+        if (ext !== "csv") {
+          errorMessage.textContent = "Only csv files are allowed.";
+          errorMessage.classList.remove("hidden");
+          return;
+        }
+
+        const formData = new FormData(form);
+        errorMessage.classList.add("hidden");
+        progressBar.style.width = "0%";
+        statusText.textContent = "Fiona is analyzing your file...";
+        progressContainer.classList.remove("hidden"); // Show progress
+        form.classList.add("hidden");
+
+        let step = 0;
+        const totalSteps = 6;
+
+        const evtSource = new EventSource("/api/progress");
+
+        evtSource.onmessage = function (e) {
+          const update = e.data;
+          step++;
+          const percent = Math.min((step / totalSteps) * 100, 100);
+          progressBar.style.width = percent + "%";
+          statusText.textContent = update;
+        };
+
+        evtSource.onerror = function () {
+          console.warn("SSE connection closed or errored");
+          evtSource.close();
+        };
+
+        try {
+          const response = await fetch("/api/analyze", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            evtSource.close();
+            window.location.href = data.report_url;
+            form.reset();
+            fileLabelText.textContent = "Click or drag file to upload";
+            fileNameDisplay.textContent = "";
+            fileLabel.classList.remove("bg-white/40", "border-white");
+          } else {
+            throw new Error(data.error || "Something went wrong");
+          }
+        } catch (error) {
+          errorMessage.textContent = error.message;
+          errorMessage.classList.remove("hidden");
+          progressContainer.classList.add("hidden"); // Hide progress again
+          form.classList.remove("hidden"); // Show form again
+          evtSource.close();
+        }
+      });
+
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files[0];
+        const icon = document.getElementById("file-icon");
+        const secondIcon = document.getElementById("second-file-icon");
+        if (file) {
+          fileLabel.classList.add("bg-white/40", "border-white");
+          fileLabelText.textContent = "File selected:";
+          fileNameDisplay.textContent = file.name;
+          icon.classList.add("hidden");
+          secondIcon.classList.remove("hidden");
+        } else {
+          fileLabel.classList.remove("bg-white/40", "border-white");
+          fileLabelText.textContent = "Click or drag file to upload";
+          fileNameDisplay.textContent = "";
+          icon.classList.remove("hidden");
+          secondIcon.classList.add("hidden");
+
+        }
+      });
+    </script>
+  </body>
+</html>
