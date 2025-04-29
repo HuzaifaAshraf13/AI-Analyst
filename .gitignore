@@ -62,3 +62,7 @@ reports/
 
 #pdf files
 pdf_reports
+
+#models
+saved_models
+generated_training_scripts
