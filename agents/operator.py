@@ -162,6 +162,7 @@ Provide 3–5 operations with executable code blocks formatted as:
                 "df = pd.get_dummies(df, columns=['category'])"
             ]
         }
+# fixed gemini parsing 
 def _parse_code_blocks(text: str) -> List[Dict]:
     """Extracts executable code from Gemini response"""
     blocks = []
